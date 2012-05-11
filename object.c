@@ -5,6 +5,28 @@
 
 #include "object.h"
 
+
+
+#define false 0
+#define true 1
+
+#define MAXOBJECTS 1000
+
+typedef struct TObject Object;
+
+typedef Object*(*Func)(Object* self, Object* other);
+
+struct TObject {
+  Object* fPrev;
+  int fGeneration;
+  Func fProc;
+  Object * fObject1;
+  Object * fObject2;
+  char fChar;
+  char* fName;
+};
+
+
 int gdebug = 0;
 void print_obj(Object* obj, char* msg){
 
@@ -25,7 +47,7 @@ Object** gobjects;
 int ggeneration;
 
 
-void start_mem(){
+void start_mem(void){
   int i;
 
   gobjects = (Object**)malloc(sizeof(Object*)*MAXOBJECTS);
@@ -42,7 +64,7 @@ void start_mem(){
 }
 
 
-void stop_mem(){
+void stop_mem(void){
   free((void*)gobjects);
 }
 
