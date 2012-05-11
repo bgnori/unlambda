@@ -10,6 +10,7 @@
 
 #define MAXOBJECTS 1000
 
+#define DEBUG 0
 
 typedef struct TObject Object;
 
@@ -26,7 +27,7 @@ struct TObject {
 
 
 Object* call(Object* self, Object* other){
- 
+
   return self->fProc(self, other);
 }
 
@@ -44,9 +45,11 @@ void start_mem(){
   ggeneration = 0;
 }
 
+
 void stop_mem(){
   free((void*)gobjects);
 }
+
 
 void make_new_entry(Object* obj){
   int i;
@@ -57,6 +60,16 @@ void make_new_entry(Object* obj){
     }
   }
   assert(false);
+}
+
+void  remove_entry(Object* entry){
+  int i;
+  for(i=0;i<MAXOBJECTS; i++){
+    if( *(gobjects+i)== entry){
+      *(gobjects+i) = NULL;
+      return;
+    }
+  }
 }
 
 
@@ -72,6 +85,7 @@ Object* NewObject(){
 }
 
 void DeleteObject(Object* self){
+  remove_entry(self);
   free((void*)self);
 }
 
@@ -104,7 +118,9 @@ void mark_tree(Object* obj){
   }
 
   obj->fGeneration = ggeneration;
-  printf("marking %p %d\n", obj, obj->fGeneration);
+  if(DEBUG){
+    printf("marking %p %d\n", obj, obj->fGeneration);
+  }
 }
 
 void mark(void){
@@ -122,13 +138,19 @@ void sweep(void){
   int i;
   Object* obj;
 
-  printf("generation %d\n", ggeneration);
+  if(DEBUG){
+    printf("generation %d\n", ggeneration);
+  }
   for(i=0; i<MAXOBJECTS; i++){
     obj = *(gobjects+i);
     if(obj){
-      printf("checking %p %d\n", obj, obj->fGeneration);
+      if(DEBUG){
+        printf("checking %p %d\n", obj, obj->fGeneration);
+      }
       if(ggeneration != obj->fGeneration){
-        printf("deleting %p\n", obj);
+        if(DEBUG){
+          printf("deleting %p\n", obj);
+        }
         DeleteObject(obj);
         obj = NULL;
       }
@@ -139,7 +161,7 @@ void sweep(void){
 
 int runnable(void){
   Object *operand, *operator, *q;
- 
+
   operand = gstack;
   if(!operand){
     return false;
@@ -217,8 +239,6 @@ Object* constant_function(){
   r->fProc = &_constant_function;
   return r;
 }
-
-
 
 
 Object* _s2(Object* self, Object* other){
