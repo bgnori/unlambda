@@ -3,14 +3,13 @@
 #include <string.h>
 #include <assert.h>
 
+#include <glib.h>
 
 #define false 0
 #define true 1
 
 
 #define MAXOBJECTS 1000
-
-#define DEBUG 0
 
 typedef struct TObject Object;
 
@@ -27,6 +26,8 @@ struct TObject {
 };
 
 
+int gdebug = 0;
+
 
 void print_obj(Object* obj, char* msg){
 
@@ -35,7 +36,7 @@ void print_obj(Object* obj, char* msg){
 }
 
 Object* call(Object* self, Object* other){
-  if(DEBUG){
+  if(gdebug){
       print_obj(self, "operator");
       print_obj(other, "operand");
   }
@@ -51,7 +52,7 @@ void start_mem(){
   int i;
 
   gobjects = (Object**)malloc(sizeof(Object*)*MAXOBJECTS);
-  if(DEBUG){
+  if(gdebug){
     printf("start/end: %p %p\n", gobjects, gobjects+MAXOBJECTS);
     /*
      * start/end: 0x4c2d040 0x4c2ef80
@@ -127,7 +128,7 @@ void init_stack(){
 }
 
 void push(Object* obj){
-  if (DEBUG){
+  if (gdebug){
     print_obj(obj, "pushing");
   }
   obj->fPrev = gstack;
@@ -137,7 +138,7 @@ void push(Object* obj){
 Object* pop(void){
   Object* r;
   r = gstack;
-  if (DEBUG){
+  if (gdebug){
     print_obj(r, "popping");
   }
   gstack = gstack->fPrev;
@@ -170,7 +171,7 @@ void mark_tree(Object* obj){
   }
 
   obj->fGeneration = ggeneration;
-  if(DEBUG){
+  if(gdebug){
     printf("marking %p %d\n", obj, obj->fGeneration);
   }
 }
@@ -190,17 +191,17 @@ void sweep(void){
   int i;
   Object* obj;
 
-  if(DEBUG){
+  if(gdebug){
     printf("generation %d\n", ggeneration);
   }
   for(i=0; i<MAXOBJECTS; i++){
     obj = *(gobjects+i);
     if(obj){
-      if(DEBUG){
+      if(gdebug){
         printf("checking %p(%p) %d\n", obj, gobjects+i ,obj->fGeneration);
       }
       if(ggeneration != obj->fGeneration){
-        if(DEBUG){
+        if(gdebug){
           printf("deleting %p\n", obj);
         }
         DeleteObject(obj);
@@ -406,23 +407,23 @@ int eval(char* xs){
         break;
     }
     while (runnable()){
-      if(DEBUG)
+      if(gdebug)
         print_stack();
       run_once();
       mark();
       sweep();
-      if(DEBUG)
+      if(gdebug)
         mem_stat();
     }
     xs++;
   }
   while (runnable()){
-    if(DEBUG)
+    if(gdebug)
       print_stack();
     run_once();
     mark();
     sweep();
-    if(DEBUG)
+    if(gdebug)
       mem_stat();
   }
   gstack = NULL;
@@ -432,7 +433,7 @@ int eval(char* xs){
   return 0;
 }
 
-int main(int args, char** argv){
+gint main(gint argc, gchar* argv[]){
   char* hw = "`r```````````.H.e.l.l.o. .w.o.r.l.di";
   char* fib =  "```s``s``sii`ki\n"
 "`k.*``s``s`ks\n"
@@ -441,7 +442,18 @@ int main(int args, char** argv){
   /*
    * http://www.madore.org/~david/programs/unlambda/
    */
+  GOptionContext *context;
+  GError *error = NULL;
 
+  context = g_option_context_new("This line is appeared after Uagese's command line");
+  g_option_context_set_summary(context, "This line is appeared before options");
+  g_option_context_set_description(context, "This line is appeared after options");
+  if(!g_option_context_parse(context, &argc, &argv, &error)){
+    g_printerr("option parsing failed: %s\n", error->message);
+    return 1;
+  }
+
+  
   start_mem();
 
   printf("%s\n", fib);
