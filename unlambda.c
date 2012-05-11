@@ -10,7 +10,7 @@
 
 #define MAXOBJECTS 1000
 
-#define DEBUG 0
+#define DEBUG 1
 
 typedef struct TObject Object;
 
@@ -23,10 +23,22 @@ struct TObject {
   Object * fObject1;
   Object * fObject2;
   char fChar;
+  char* fName;
 };
 
 
+
+void print_obj(Object* obj, char* msg){
+
+  printf("%s %s %p\n", msg, obj->fName, obj);
+
+}
+
 Object* call(Object* self, Object* other){
+  if(DEBUG){
+      print_obj(self, "operator");
+      print_obj(other, "operand");
+  }
 
   return self->fProc(self, other);
 }
@@ -39,6 +51,12 @@ void start_mem(){
   int i;
 
   gobjects = (Object**)malloc(sizeof(Object*)*MAXOBJECTS);
+  if(DEBUG){
+    printf("start/end: %p %p\n", gobjects, gobjects+MAXOBJECTS);
+    /*
+     * start/end: 0x4c2d040 0x4c2ef80
+     */
+  }
   for(i=0;i<MAXOBJECTS; i++){
     *(gobjects+i) = NULL;
   }
@@ -48,6 +66,18 @@ void start_mem(){
 
 void stop_mem(){
   free((void*)gobjects);
+}
+
+void mem_stat(){
+  int i;
+  int used;
+  used = 0;
+  for(i=0;i<MAXOBJECTS; i++){
+    if( *(gobjects+i)!=NULL){
+      used += 1;
+    }
+  }
+  printf("%d Objectct allocated, out of %d\n", used, MAXOBJECTS);
 }
 
 
@@ -97,6 +127,9 @@ void init_stack(){
 }
 
 void push(Object* obj){
+  if (DEBUG){
+    print_obj(obj, "pushing");
+  }
   obj->fPrev = gstack;
   gstack = obj;
 }
@@ -104,8 +137,27 @@ void push(Object* obj){
 Object* pop(void){
   Object* r;
   r = gstack;
+  if (DEBUG){
+    print_obj(r, "popping");
+  }
   gstack = gstack->fPrev;
   return r;
+}
+
+
+void print_stack(void){
+  char buf[10];
+  int depth = 0;
+  Object* peeker;
+  peeker = gstack;
+  printf("===== stack dump start ====\n");
+  while(peeker){
+    sprintf(buf, "(depth=%i)", depth);
+    print_obj(peeker, buf);
+    depth += 1;
+    peeker = peeker->fPrev;
+  }
+  printf("===== stack dump end ====\n");
 }
 
 void mark_tree(Object* obj){
@@ -145,7 +197,7 @@ void sweep(void){
     obj = *(gobjects+i);
     if(obj){
       if(DEBUG){
-        printf("checking %p %d\n", obj, obj->fGeneration);
+        printf("checking %p(%p) %d\n", obj, gobjects+i ,obj->fGeneration);
       }
       if(ggeneration != obj->fGeneration){
         if(DEBUG){
@@ -194,6 +246,7 @@ Object* quote(void){
   r = NewObject();
   r->fProc = NULL;
   r->fObject1 = NULL;
+  r->fName = "quote";
   return r;
 }
 
@@ -208,6 +261,7 @@ Object* print(char x){
   r = NewObject();
   r->fProc = &_print;
   r->fChar = x;
+  r->fName = "print";
   return r;
 }
 
@@ -221,6 +275,7 @@ Object* identity(void){
   r = NewObject();
   r->fProc = &_identity;
   r->fObject1 = NULL;
+  r->fName = "identity";
   return r;
 }
 
@@ -237,6 +292,7 @@ Object* constant_function(){
   Object* r;
   r = NewObject();
   r->fProc = &_constant_function;
+  r->fName = "constant_function";
   return r;
 }
 
@@ -264,6 +320,7 @@ Object* _s1(Object* self, Object* other){
   s2->fProc = &_s2;
   s2->fObject1 = other;
   s2->fObject2 = self; /* may be it is better idea to reference x, instead of s1 */
+  s2->fName = "s2";
   return s2;
 }
 
@@ -274,6 +331,7 @@ Object* _generalized_evaluation(Object* self, Object* other){
   s1 = NewObject();
   s1->fProc = &_s1;
   s1->fObject1 = other;
+  s1->fName = "s1";
   return s1;
 }
 
@@ -285,6 +343,7 @@ Object* generalized_evaluation(void){
   r = NewObject();
   r->fProc = &_generalized_evaluation;
   r->fObject1 = NULL;
+  r->fName = "generalized_evaluation";
   return r;
 }
 
@@ -337,16 +396,20 @@ int eval(char* xs){
         break;
     }
     while (runnable()){
+      print_stack();
       run_once();
       mark();
       sweep();
+      mem_stat();
     }
     xs++;
   }
   while (runnable()){
+    print_stack();
     run_once();
     mark();
     sweep();
+    mem_stat();
   }
   gstack = NULL;
   mark();
@@ -357,9 +420,9 @@ int eval(char* xs){
 
 int main(int args, char** argv){
   char* hw = "`r```````````.H.e.l.l.o. .w.o.r.l.di";
-  char* fib =  "```s``s``sii`ki"
-"`k.*``s``s`ks"
-"``s`k`s`ks``s``s`ks``s`k`s`kr``s`k`sikk"
+  char* fib =  "```s``s``sii`ki\n"
+"`k.*``s``s`ks\n"
+"``s`k`s`ks``s``s`ks``s`k`s`kr``s`k`sikk\n"
 "`k``s`ksk";
   /*
    * http://www.madore.org/~david/programs/unlambda/
@@ -367,8 +430,9 @@ int main(int args, char** argv){
 
   start_mem();
 
-  eval(hw);
-  //eval(fib);
+  printf("%s\n", fib);
+  //eval(hw);
+  eval(fib);
   //printf("%s\n", hw);
   stop_mem();
   return 0;
