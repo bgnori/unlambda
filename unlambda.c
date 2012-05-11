@@ -10,7 +10,7 @@
 
 #define MAXOBJECTS 1000
 
-#define DEBUG 1
+#define DEBUG 0
 
 typedef struct TObject Object;
 
@@ -280,8 +280,18 @@ Object* identity(void){
 }
 
 
+Object* _k1(Object* self, Object* other){
+  return self->fObject1;
+}
+
+
 Object* _constant_function(Object* self, Object* other){
-  return other;
+  Object* k1;
+  k1 = NewObject();
+  k1->fProc = _k1;
+  k1->fName = "k1";
+  k1->fObject1 = other;
+  return k1;
 }
 
 Object* constant_function(){
@@ -396,20 +406,24 @@ int eval(char* xs){
         break;
     }
     while (runnable()){
-      print_stack();
+      if(DEBUG)
+        print_stack();
       run_once();
       mark();
       sweep();
-      mem_stat();
+      if(DEBUG)
+        mem_stat();
     }
     xs++;
   }
   while (runnable()){
-    print_stack();
+    if(DEBUG)
+      print_stack();
     run_once();
     mark();
     sweep();
-    mem_stat();
+    if(DEBUG)
+      mem_stat();
   }
   gstack = NULL;
   mark();
