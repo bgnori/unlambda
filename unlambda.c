@@ -8,6 +8,7 @@
 #include "object.h"
 
 
+#define MAXOBJECTS 1000
 
 gint main(gint argc, gchar* argv[]){
   char* hw = "`r```````````.H.e.l.l.o. .w.o.r.l.di";
@@ -18,6 +19,7 @@ gint main(gint argc, gchar* argv[]){
   /*
    * http://www.madore.org/~david/programs/unlambda/
    */
+  World world; /* FIXME. give get_size_of_world? */
   GOptionContext *context;
   GError *error = NULL;
 
@@ -29,14 +31,14 @@ gint main(gint argc, gchar* argv[]){
     return 1;
   }
 
-  
-  start_mem();
 
+  InitWorld(&world);
+
+  World_start(&world, MAXOBJECTS);
+  
   printf("%s\n", fib);
   //eval(hw);
-  eval(fib);
-  //printf("%s\n", hw);
-  stop_mem();
+  World_eval(&world, fib);
+  World_stop(&world);
   return 0;
 }
-
