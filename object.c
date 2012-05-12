@@ -5,79 +5,7 @@
 
 #include "object.h"
 
-#define false 0
-#define true 1
 
-
-typedef struct TObjectField ObjectField;
-struct TObjectField {
-  Object* uObject;
-  int uInteger;
-  char uChar;
-  char* uStringPtr;
-  int uStringLen;
-};
-
-struct TObject {
-  Func fProc;
-  char* fName;
-  ObjectField fOne; 
-  ObjectField fTwo; 
-};
-Object* _NewObject(int size);
-
-
-#define World_newChar
-
-
-struct TWorld {
-  Object fBase;
-  int fDummy;
-};
-Object* World_newObject(World* world, int size);
-#define World_setMemory(world, x) ((((Object*)world)->fOne.uObject) = (Object*)(x))
-#define World_getMemory(world) ((Memory)(((Object*)world)->fOne.uObject))
-#define World_setDebug(world, x) ((((Object*)world)->fTwo.uInteger) = (x))
-#define World_getDebug(world) ((((Object*)world)->fTwo.uInteger))
-
-
-Memory* CreateMemory(World* world, int memsize);
-typedef struct TMemoryEntry MemoryEntry;
-struct TMemoryEntry {
-  Object* fTarget;
-  int fGeneration;
-};
-
-struct TMemory{
-  Object fBase;
-  int fDummy;
-};
-#define Memory_setEntries(memory, x) ((((Object*)(memory))->fOne.uObject) = (Object*)(x))
-#define Memory_getEntries(memory) ((MemoryEntry**)(((Object*)(memory))->fOne.uObject))
-#define Memory_setSize(memory, x)((((Object*)(memory))->fTwo.uInteger) = (x))
-#define Memory_getSize(memory) ((((Object*)(memory))->fTwo.uInteger))
-
-MemoryEntry Memory_getNth(Memory* memory, int n);
-void Memory_setNth(Memory* memory, int n, Object* target, int generation);
-
-
-void Stack_push(World* world, Object* object);
-void Stack_pop(World* world);
-typedef struct TStack Stack;
-struct TStack{
-  Object fBase;
-  int fDummy;
-};
-
-void UnlambdaEval_eval(World* world, char* xs);
-struct TUnlambdaEval{
-  Object fBase;
-  Stack* fCallStack;
-};
-
-
-
-#define NewObject(TYPE) ((TYPE*)_NewObject((sizeof(TYPE))))
 Object* _NewObject(int size){
   Object* r;
   r = (Object*)malloc(sizeof(Object));
@@ -96,10 +24,6 @@ Object* World_newInterger(int v){
 }
 
 
-
-
-
-#define DeleteObject(self) _DeleteObject((Object*)(self))
 void _DeleteObject(Object* self){
   free((void*)self);
 }
@@ -127,7 +51,7 @@ World* CreateWorld(int memsize){
 
   m = CreateMemory(w, memsize);
 
-  Memory_setNth(m, 0, w);
+  Memory_setNth(m, 0, (Object*)w, -1);
   World_setMemory(w, m);
   return w;
 }
@@ -157,7 +81,7 @@ Memory* CreateMemory(World* world, int memsize){
 
   generation = World_newInterger(0);
 
-  Memory_setNth(m, 1, m, -1);
+  Memory_setNth(m, 1, (Object*)m, -1);
   Memory_setNth(m, 2, generation, -1);
   return m;
 }
@@ -344,222 +268,4 @@ void sweep(World* world){
   }
 }
 
-
-int runnable(World* world){
-  Object *operand, *operator, *q;
-
-  operand = gstack;
-  if(!operand){
-    return false;
-  }
-  if(!operand->fProc){
-    return false;
-  }
-  operator = operand->fPrev;
-
-  if(!operator){
-    return false;
-  }
-  if(!operator->fProc){
-    return false;
-  }
-  q = operator->fPrev;
-  if(!q){
-    return false;
-  }
-  if(q->fProc){
-    return false;
-  }
-  return true;
-}
-
-
-
-Object* quote(World* world){
-  Object* r;
-  r = World_newObject(world, sizeof(Object));
-  r->fProc = NULL;
-  r->fOne.uObject = NULL;
-  r->fName = "quote";
-  return r;
-}
-
-
-Object* _print(World* world, Object* self, Object* other){
-  printf("%c", self->fChar);
-  return other;
-}
-
-Object* print(World* world, char x){
-  Object* r;
-  r = World_newObject(world, sizeof(Object));
-  r->fProc = &_print;
-  r->fChar = x;
-  r->fName = "print";
-  return r;
-}
-
-
-Object* _identity(World* world, Object* self, Object* other){
-  return other;
-}
-
-Object* identity(World* world){
-  Object* r;
-  r = World_newObject(world, sizeof(Object));
-  r->fProc = &_identity;
-  r->fOne.uObject = NULL;
-  r->fName = "identity";
-  return r;
-}
-
-
-Object* _k1(World* world, Object* self, Object* other){
-  return self->fOne.uObject;
-}
-
-
-Object* _constant_function(World* world, Object* self, Object* other){
-  Object* k1;
-  k1 = World_newObject(world, sizeof(Object));
-  k1->fProc = _k1;
-  k1->fName = "k1";
-  k1->fOne.uObject = other;
-  return k1;
-}
-
-Object* constant_function(World* world){
-  /*
-   *  k manufactures constant functions: the result of `kx is a function which,
-   * when invoked, returns x. Thus the value of ``kxy is x for any x and y.
-   */
-  Object* r;
-  r = World_newObject(world, sizeof(Object));
-  r->fProc = &_constant_function;
-  r->fName = "constant_function";
-  return r;
-}
-
-
-Object* _s2(World* world, Object* self, Object* other){
-  /* self == s2, other == z */
-  Object* x; Object* y; Object*z;
-  Object* xz; Object* yz;
-  Object* r;
-  z = other;
-  y = self->fOne.uObject;
-  x = self->fTwo.uObject->fOne.uObject;
-  xz = World_call(world, x, z);
-  yz = World_call(world, y, z);
-  r = World_call(world, xz, yz);
-
-  return r;
-}
-
-
-Object* _s1(World* world, Object* self, Object* other){
-  /* self == s1, other == y */
-  Object* s2;
-  s2 = World_newObject(world, sizeof(Object));
-  s2->fProc = &_s2;
-  s2->fOne.uObject = other;
-  s2->fTwo.uObject = self; /* may be it is better idea to reference x, instead of s1 */
-  s2->fName = "s2";
-  return s2;
-}
-
-
-Object* _generalized_evaluation(World* world, Object* self, Object* other){
-  /* self == s, other == x */
-  Object* s1;
-  s1 = World_newObject(world, sizeof(Object));
-  s1->fProc = &_s1;
-  s1->fOne.uObject = other;
-  s1->fName = "s1";
-  return s1;
-}
-
-Object* generalized_evaluation(World* world){
-  /*
-   * s is a generalized evaluation operator. ```sxyz evaluates to ``xz`yz for any x, y, and z."""
-   */
-  Object* r;/* s */
-  r = World_newObject(world, sizeof(Object));
-  r->fProc = &_generalized_evaluation;
-  r->fOne.uObject = NULL;
-  r->fName = "generalized_evaluation";
-  return r;
-}
-
-
-void run_once(World* world){
-  Object *operand, *operator, *q, *r;
-
-  operand = pop(world);
-  operator = pop(world);
-  q = pop(world);
-  r = World_call(world, operator, operand);
-  push(world, r);
-}
-
-
-
-void  World_eval(World* world, char* xs){
-  char x;
-
-  while (*xs){
-    x = *xs;
-
-    switch(x){
-      case '`':
-        push(world, quote(world));
-        break;
-
-      case '.':
-        xs++;
-        push(world, (print(world, *xs)));
-        break;
-
-      case 'r':
-        push(world, (print(world, '\n')));
-        break;
-
-      case 'i':
-        push(world, identity(world));
-        break;
-
-      case 'k':
-        push(world, constant_function(world));
-        break;
-
-      case 's':
-        push(world, generalized_evaluation(world));
-        break;
-
-      default:
-        break;
-    }
-    while (runnable(world)){
-      if(World_getDebug(world))
-        print_stack(world);
-      run_once(world);
-      mark(world);
-      sweep(world);
-      if(World_getDebug(world))
-        mem_stat(world);
-    }
-    xs++;
-  }
-  while (runnable(world)){
-    if(World_getDebug(world))
-      print_stack(world);
-    run_once(world);
-    mark(world);
-    sweep(world);
-    if(World_getDebug(world))
-      mem_stat(world);
-  }
-
-  return;
-}
 
