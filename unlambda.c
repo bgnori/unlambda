@@ -19,7 +19,7 @@ gint main(gint argc, gchar* argv[]){
   /*
    * http://www.madore.org/~david/programs/unlambda/
    */
-  World world; /* FIXME. give get_size_of_world? */
+  World* world;
   GOptionContext *context;
   GError *error = NULL;
 
@@ -32,13 +32,12 @@ gint main(gint argc, gchar* argv[]){
   }
 
 
-  InitWorld(&world);
+  world = CreateWorld(MAXOBJECTS);
 
-  World_start(&world, MAXOBJECTS);
-  
   printf("%s\n", fib);
   //eval(hw);
-  World_eval(&world, fib);
-  World_stop(&world);
+  World_unlambda(world, fib);
+  DeleteWorld(world);
+
   return 0;
 }

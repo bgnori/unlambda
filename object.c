@@ -9,54 +9,212 @@
 #define true 1
 
 
+typedef struct TObjectField ObjectField;
+struct TObjectField {
+  Object* uObject;
+  int uInteger;
+  char uChar;
+  char* uStringPtr;
+  int uStringLen;
+};
 
-int gdebug = 0;
-void print_obj(Object* obj, char* msg){
+struct TObject {
+  Func fProc;
+  char* fName;
+  ObjectField fOne; 
+  ObjectField fTwo; 
+};
+Object* _NewObject(int size);
+
+
+#define World_newChar
+
+
+struct TWorld {
+  Object fBase;
+  int fDummy;
+};
+Object* World_newObject(World* world, int size);
+#define World_setMemory(world, x) ((((Object*)world)->fOne.uObject) = (Object*)(x))
+#define World_getMemory(world) ((Memory)(((Object*)world)->fOne.uObject))
+#define World_setDebug(world, x) ((((Object*)world)->fTwo.uInteger) = (x))
+#define World_getDebug(world) ((((Object*)world)->fTwo.uInteger))
+
+
+Memory* CreateMemory(World* world, int memsize);
+typedef struct TMemoryEntry MemoryEntry;
+struct TMemoryEntry {
+  Object* fTarget;
+  int fGeneration;
+};
+
+struct TMemory{
+  Object fBase;
+  int fDummy;
+};
+#define Memory_setEntries(memory, x) ((((Object*)(memory))->fOne.uObject) = (Object*)(x))
+#define Memory_getEntries(memory) ((MemoryEntry**)(((Object*)(memory))->fOne.uObject))
+#define Memory_setSize(memory, x)((((Object*)(memory))->fTwo.uInteger) = (x))
+#define Memory_getSize(memory) ((((Object*)(memory))->fTwo.uInteger))
+
+MemoryEntry Memory_getNth(Memory* memory, int n);
+void Memory_setNth(Memory* memory, int n, Object* target, int generation);
+
+
+void Stack_push(World* world, Object* object);
+void Stack_pop(World* world);
+typedef struct TStack Stack;
+struct TStack{
+  Object fBase;
+  int fDummy;
+};
+
+void UnlambdaEval_eval(World* world, char* xs);
+struct TUnlambdaEval{
+  Object fBase;
+  Stack* fCallStack;
+};
+
+
+
+#define NewObject(TYPE) ((TYPE*)_NewObject((sizeof(TYPE))))
+Object* _NewObject(int size){
+  Object* r;
+  r = (Object*)malloc(sizeof(Object));
+  r->fOne.uObject = NULL;
+  r->fTwo.uObject = NULL;
+  return r;
+}
+
+Object* World_newInterger(int v){
+  Object* obj;
+
+  obj = NewObject(Object);
+  obj->fOne.uInteger = v;
+  obj->fTwo.uInteger = 0;
+  return obj;
+}
+
+
+
+
+
+#define DeleteObject(self) _DeleteObject((Object*)(self))
+void _DeleteObject(Object* self){
+  free((void*)self);
+}
+
+void Object_print(Object* obj, char* msg){
   printf("%s %s %p\n", msg, obj->fName, obj);
 }
 
 
-Object* call(World* world, Object* self, Object* other){
-  if(gdebug){
-      print_obj(self, "operator");
-      print_obj(other, "operand");
+Object* World_call(World* world, Object* self, Object* other){
+  if(World_getDebug(world)){
+      Object_print(self, "operator");
+      Object_print(other, "operand");
   }
   return self->fProc(world, self, other);
 }
 
 
-void InitWorld(World* world){
-  return;
+
+World* CreateWorld(int memsize){
+  World* w;
+  Memory* m;
+  w = NewObject(World);
+  World_setDebug(w, true);
+
+  m = CreateMemory(w, memsize);
+
+  Memory_setNth(m, 0, w);
+  World_setMemory(w, m);
+  return w;
 }
 
 
-void World_start(World* world, int memsize){
-  int i;
+Memory* CreateMemory(World* world, int memsize){
   Memory* m;
+  void* chunk;
+  MemoryEntry** start;
+  MemoryEntry** end;
+  Object* generation;
 
-  m = (Memory*)NewObject(world, sizeof(Memory));
+  m = NewObject(Memory);
 
-  m->fObjects = (Object**)malloc(sizeof(Object*)*memsize);
-  m->fSize = memsize;
-  if(gdebug){
-    printf("start/end: %p %p\n", m->fObjects, m->fObjects+m->fSize);
-    /*
-     * start/end: 0x4c2d040 0x4c2ef80
-     */
+  chunk = malloc(sizeof(Object*)*memsize);
+  Memory_setEntries(m, chunk);
+  Memory_setSize(m, memsize);
+
+  start = Memory_getEntries(m);
+  end = start + Memory_getSize(m);
+  if(World_getDebug(world)){
+    printf("start/end: %p %p\n", start, end);
   }
-  for(i=0;i<m->fSize; i++){
-    *(m->fObjects+i) = NULL;
+  for(;start<end; start++){
+    start = NULL;
   }
-  m->fGeneration = 0;
-  world->fMemory = m; 
+
+  generation = World_newInterger(0);
+
+  Memory_setNth(m, 1, m, -1);
+  Memory_setNth(m, 2, generation, -1);
+  return m;
+}
+
+MemoryEntry Memory_getNth(Memory* memory, int n){
+  return *(*(Memory_getEntries(memory)) + n);
+}
+
+void Memory_setNth(Memory* memory, int n, Object* target, int generation){
+  MemoryEntry entry;
+
+  entry.fTarget = target;
+  entry.fGeneration = generation;
+  *(*(Memory_getEntries(memory)) + n)  = entry;
 }
 
 
-void World_stop(World* world){
-  Memory* m;
-  m = (Memory*)(world->fMemory);
+void DeleteUnlambdaEval(UnlambdaEval* unlambda){
+  gstack = NULL;
+  mark(world);
+  sweep(world);
+}
+
+void DeleteMemory(Memory* memory){
+
   free((void*)(m->fObjects));
-  free((void*)m);
+  DeleteObject(m);
+}
+
+
+void DeleteWorld(World* world){
+  DeleteMemory(World_Memory(world));
+  DeleteObject(world);
+}
+
+
+Object* World_newObject(World* world, int size){
+  Object* r;
+  r = _NewObject(size);
+  make_new_entry(world, r);
+  return r;
+}
+
+void World_deleteObject(World* world, Object* obj){
+  remove_entry(world, obj);
+  DeleteObject(obj);
+}
+
+
+
+UnlambdaEval* World_newUnlambdaEval(World* world){
+  init_stack(world);
+}
+
+void World_deleteUnlambdaEval(World* world){
+
+
 }
 
 
@@ -64,20 +222,20 @@ void mem_stat(World *world){
   int i;
   int used;
   used = 0;
-  for(i=0;i< world->fMemory->fSize; i++){
-    if( *(world->fMemory->fObjects+i)!=NULL){
+  for(i=0;i< World_Memory(world)->fSize; i++){
+    if( *(World_Memory(world)->fObjects+i)!=NULL){
       used += 1;
     }
   }
-  printf("%d Object allocated, out of %d\n", used, world->fMemory->fSize);
+  printf("%d Object allocated, out of %d\n", used, World_Memory(world)->fSize);
 }
 
 
 void make_new_entry(World *world, Object* obj){
   int i;
-  for(i=0;i<world->fMemory->fSize; i++){
-    if( *(world->fMemory->fObjects+i)==NULL){
-      *(world->fMemory->fObjects+i) = obj;
+  for(i=0;i<World_Memory(world)->fSize; i++){
+    if( *(World_Memory(world)->fObjects+i)==NULL){
+      *(World_Memory(world)->fObjects+i) = obj;
       return;
     }
   }
@@ -86,30 +244,14 @@ void make_new_entry(World *world, Object* obj){
 
 void  remove_entry(World* world, Object* entry){
   int i;
-  for(i=0;i<world->fMemory->fSize; i++){
-    if( *(world->fMemory->fObjects+i)== entry){
-      *(world->fMemory->fObjects+i) = NULL;
+  for(i=0;i<World_Memory(world)->fSize; i++){
+    if( *(World_Memory(world)->fObjects+i)== entry){
+      *(World_Memory(world)->fObjects+i) = NULL;
       return;
     }
   }
 }
 
-
-Object* NewObject(World* world, int size){
-  Object* r;
-  r = (Object*)malloc(sizeof(Object));
-  make_new_entry(world, r);
-  r->fPrev = NULL;
-  r->fObject1 = NULL;
-  r->fObject2 = NULL;
-  r->fGeneration = -1;
-  return r;
-}
-
-void DeleteObject(World* world, Object* self){
-  remove_entry(world, self);
-  free((void*)self);
-}
 
 
 Object* gstack;
@@ -119,8 +261,8 @@ void init_stack(World* world){
 }
 
 void push(World* world, Object* obj){
-  if (gdebug){
-    print_obj(obj, "pushing");
+  if (World_getDebug(world)){
+    Object_print(obj, "pushing");
   }
   obj->fPrev = gstack;
   gstack = obj;
@@ -128,9 +270,9 @@ void push(World* world, Object* obj){
 
 Object* pop(World* world){
   Object* r;
-  r = gstack;
-  if (gdebug){
-    print_obj(r, "popping");
+  r = gstack
+  if (World_getDebug(world)){
+    Object_print(r, "popping");
   }
   gstack = gstack->fPrev;
   return r;
@@ -145,7 +287,7 @@ void print_stack(World* world){
   printf("===== stack dump start ====\n");
   while(peeker){
     sprintf(buf, "(depth=%i)", depth);
-    print_obj(peeker, buf);
+    Object_print(peeker, buf);
     depth += 1;
     peeker = peeker->fPrev;
   }
@@ -154,15 +296,15 @@ void print_stack(World* world){
 
 void mark_tree(World* world, Object* obj){
 
-  if(obj->fObject1){
-    mark_tree(world, obj->fObject1);
+  if(obj->fOne.uObject){
+    mark_tree(world, obj->fOne.uObject);
   }
-  if(obj->fObject2){
-    mark_tree(world, obj->fObject2);
+  if(obj->fTwo.uObject){
+    mark_tree(world, obj->fTwo.uObject);
   }
 
-  obj->fGeneration = world->fMemory->fGeneration;
-  if(gdebug){
+  obj->fGeneration = World_Memory(world)->fGeneration;
+  if(World_getDebug(world)){
     printf("marking %p %d\n", obj, obj->fGeneration);
   }
 }
@@ -170,7 +312,7 @@ void mark_tree(World* world, Object* obj){
 void mark(World* world){
   Object* obj;
 
-  world->fMemory->fGeneration += 1;
+  World_Memory(world)->fGeneration += 1;
   obj = gstack;
   while(obj){
     mark_tree(world, obj);
@@ -182,20 +324,20 @@ void sweep(World* world){
   int i;
   Object* obj;
 
-  if(gdebug){
-    printf("generation %d\n", world->fMemory->fGeneration);
+  if(World_getDebug(world)){
+    printf("generation %d\n", World_Memory(world)->fGeneration);
   }
-  for(i=0; i<world->fMemory->fSize; i++){
-    obj = *(world->fMemory->fObjects+i);
+  for(i=0; i<World_Memory(world)->fSize; i++){
+    obj = *(World_Memory(world)->fObjects+i);
     if(obj){
-      if(gdebug){
-        printf("checking %p(%p) %d\n", obj, world->fMemory->fObjects+i ,obj->fGeneration);
+      if(World_getDebug(world)){
+        printf("checking %p(%p) %d\n", obj, World_Memory(world)->fObjects+i ,obj->fGeneration);
       }
-      if(world->fMemory->fGeneration != obj->fGeneration){
-        if(gdebug){
+      if(World_Memory(world)->fGeneration != obj->fGeneration){
+        if(World_getDebug(world)){
           printf("deleting %p\n", obj);
         }
-        DeleteObject(world, obj);
+        World_deleteObject(world, obj);
         obj = NULL;
       }
     }
@@ -235,9 +377,9 @@ int runnable(World* world){
 
 Object* quote(World* world){
   Object* r;
-  r = NewObject(world, sizeof(Object));
+  r = World_newObject(world, sizeof(Object));
   r->fProc = NULL;
-  r->fObject1 = NULL;
+  r->fOne.uObject = NULL;
   r->fName = "quote";
   return r;
 }
@@ -250,7 +392,7 @@ Object* _print(World* world, Object* self, Object* other){
 
 Object* print(World* world, char x){
   Object* r;
-  r = NewObject(world, sizeof(Object));
+  r = World_newObject(world, sizeof(Object));
   r->fProc = &_print;
   r->fChar = x;
   r->fName = "print";
@@ -264,25 +406,25 @@ Object* _identity(World* world, Object* self, Object* other){
 
 Object* identity(World* world){
   Object* r;
-  r = NewObject(world, sizeof(Object));
+  r = World_newObject(world, sizeof(Object));
   r->fProc = &_identity;
-  r->fObject1 = NULL;
+  r->fOne.uObject = NULL;
   r->fName = "identity";
   return r;
 }
 
 
 Object* _k1(World* world, Object* self, Object* other){
-  return self->fObject1;
+  return self->fOne.uObject;
 }
 
 
 Object* _constant_function(World* world, Object* self, Object* other){
   Object* k1;
-  k1 = NewObject(world, sizeof(Object));
+  k1 = World_newObject(world, sizeof(Object));
   k1->fProc = _k1;
   k1->fName = "k1";
-  k1->fObject1 = other;
+  k1->fOne.uObject = other;
   return k1;
 }
 
@@ -292,7 +434,7 @@ Object* constant_function(World* world){
    * when invoked, returns x. Thus the value of ``kxy is x for any x and y.
    */
   Object* r;
-  r = NewObject(world, sizeof(Object));
+  r = World_newObject(world, sizeof(Object));
   r->fProc = &_constant_function;
   r->fName = "constant_function";
   return r;
@@ -305,11 +447,11 @@ Object* _s2(World* world, Object* self, Object* other){
   Object* xz; Object* yz;
   Object* r;
   z = other;
-  y = self->fObject1;
-  x = self->fObject2->fObject1;
-  xz = call(world, x, z);
-  yz = call(world, y, z);
-  r = call(world, xz, yz);
+  y = self->fOne.uObject;
+  x = self->fTwo.uObject->fOne.uObject;
+  xz = World_call(world, x, z);
+  yz = World_call(world, y, z);
+  r = World_call(world, xz, yz);
 
   return r;
 }
@@ -318,10 +460,10 @@ Object* _s2(World* world, Object* self, Object* other){
 Object* _s1(World* world, Object* self, Object* other){
   /* self == s1, other == y */
   Object* s2;
-  s2 = NewObject(world, sizeof(Object));
+  s2 = World_newObject(world, sizeof(Object));
   s2->fProc = &_s2;
-  s2->fObject1 = other;
-  s2->fObject2 = self; /* may be it is better idea to reference x, instead of s1 */
+  s2->fOne.uObject = other;
+  s2->fTwo.uObject = self; /* may be it is better idea to reference x, instead of s1 */
   s2->fName = "s2";
   return s2;
 }
@@ -330,9 +472,9 @@ Object* _s1(World* world, Object* self, Object* other){
 Object* _generalized_evaluation(World* world, Object* self, Object* other){
   /* self == s, other == x */
   Object* s1;
-  s1 = NewObject(world, sizeof(Object));
+  s1 = World_newObject(world, sizeof(Object));
   s1->fProc = &_s1;
-  s1->fObject1 = other;
+  s1->fOne.uObject = other;
   s1->fName = "s1";
   return s1;
 }
@@ -342,9 +484,9 @@ Object* generalized_evaluation(World* world){
    * s is a generalized evaluation operator. ```sxyz evaluates to ``xz`yz for any x, y, and z."""
    */
   Object* r;/* s */
-  r = NewObject(world, sizeof(Object));
+  r = World_newObject(world, sizeof(Object));
   r->fProc = &_generalized_evaluation;
-  r->fObject1 = NULL;
+  r->fOne.uObject = NULL;
   r->fName = "generalized_evaluation";
   return r;
 }
@@ -356,16 +498,15 @@ void run_once(World* world){
   operand = pop(world);
   operator = pop(world);
   q = pop(world);
-  r = call(world, operator, operand);
+  r = World_call(world, operator, operand);
   push(world, r);
 }
 
 
 
-void World_eval(World* world, char* xs){
+void  World_eval(World* world, char* xs){
   char x;
 
-  init_stack(world);
   while (*xs){
     x = *xs;
 
@@ -399,28 +540,25 @@ void World_eval(World* world, char* xs){
         break;
     }
     while (runnable(world)){
-      if(gdebug)
+      if(World_getDebug(world))
         print_stack(world);
       run_once(world);
       mark(world);
       sweep(world);
-      if(gdebug)
+      if(World_getDebug(world))
         mem_stat(world);
     }
     xs++;
   }
   while (runnable(world)){
-    if(gdebug)
+    if(World_getDebug(world))
       print_stack(world);
     run_once(world);
     mark(world);
     sweep(world);
-    if(gdebug)
+    if(World_getDebug(world))
       mem_stat(world);
   }
-  gstack = NULL;
-  mark(world);
-  sweep(world);
 
   return;
 }
