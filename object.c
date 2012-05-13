@@ -118,7 +118,6 @@ int Memory_getGeneration(Memory* m){
   return i->fOne.uInteger;
 }
 
-void Memory_incGeneration(Memory* self);
 void Memory_incGeneration(Memory* self){
   Object* i;
   i = Memory_NthEntry(self, 2)->fTarget;
