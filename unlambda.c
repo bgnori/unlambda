@@ -6,17 +6,57 @@
 #include <glib.h>
 
 #include "object.h"
-
+#include "unlambda.h"
 
 #define MAXOBJECTS 1000
 
-int runnable(World* world){
+
+
+typedef struct TUnlambdaEval UnlambdaEval;
+struct TUnlambdaEval {
+  Object fBase;
+};
+
+Object* Unlambda_call(Object* self, Object* other);
+
+#define UnlambdaEval_getMemory(self) ((Memory*)((self)->fBase.fOne.uObject))
+#define UnlambdaEval_getStack(self) ((Stack*)((self)->fBase.fTwo.uObject))
+
+UnlambdaEval* NewUnlambdaEval(World* world){
+  UnlambdaEval* ue;
+  ue = NewObject(UnlambdaEval);
+
+  ue->fBase.fOne.uObject = (Object*)World_getMemory(world);
+  ue->fBase.fTwo.uObject = (Object*)NewStack();
+  return ue;
+}
+
+void DeleteUnlambdaEval(UnlambdaEval* self){
+  Stack* stack;
+  Object* obj;
+  Memory* memory;
+
+  stack = UnlambdaEval_getStack(self);
+  obj = Stack_pop(stack);
+  while(obj){
+    DeleteObject(obj);
+    obj = Stack_pop(stack);
+  }
+
+  memory = UnlambdaEval_getMemory(self);
+  Memory_mark(memory, stack);
+  Memory_sweep(memory);
+}
+
+
+
+int runnable(void){
   Object *operand, *operator, *q;
-  Object* stack;
+  Stack* stack;
   Memory* m;
 
-  m = World_getMemory(world);
-  stack = Memory_getNth(m, 4).fTarget; /*FIXME */
+  m = World_getMemory(getWorld());
+  stack = (Stack*)(Memory_NthEntry(m, 4)->fTarget); /*FIXME */
 
   operand = Stack_pop(stack);
   if(!operand){
@@ -53,9 +93,9 @@ int runnable(World* world){
 }
 
 
-Object* quote(World* world){
+Object* quote(){
   Object* r;
-  r = World_newObject(world, sizeof(Object));
+  r = NewObject(Object);
   r->fProc = NULL;
   r->fOne.uObject = NULL;
   r->fName = "quote";
@@ -63,28 +103,28 @@ Object* quote(World* world){
 }
 
 
-Object* _print(World* world, Object* self, Object* other){
-  printf("%c", self->fChar);
+Object* _print(Object* self, Object* other){
+  printf("%c", self->fOne.uChar);
   return other;
 }
 
-Object* print(World* world, char x){
+Object* print(char x){
   Object* r;
-  r = World_newObject(world, sizeof(Object));
+  r = NewObject(Object);
   r->fProc = &_print;
-  r->fChar = x;
+  r->fOne.uChar = x;
   r->fName = "print";
   return r;
 }
 
 
-Object* _identity(World* world, Object* self, Object* other){
+Object* _identity(Object* self, Object* other){
   return other;
 }
 
-Object* identity(World* world){
+Object* identity(void){
   Object* r;
-  r = World_newObject(world, sizeof(Object));
+  r = NewObject(Object);
   r->fProc = &_identity;
   r->fOne.uObject = NULL;
   r->fName = "identity";
@@ -92,34 +132,34 @@ Object* identity(World* world){
 }
 
 
-Object* _k1(World* world, Object* self, Object* other){
+Object* _k1(Object* self, Object* other){
   return self->fOne.uObject;
 }
 
 
-Object* _constant_function(World* world, Object* self, Object* other){
+Object* _constant_function(Object* self, Object* other){
   Object* k1;
-  k1 = World_newObject(world, sizeof(Object));
+  k1 = NewObject(Object);
   k1->fProc = _k1;
   k1->fName = "k1";
   k1->fOne.uObject = other;
   return k1;
 }
 
-Object* constant_function(World* world){
+Object* constant_function(void){
   /*
    *  k manufactures constant functions: the result of `kx is a function which,
    * when invoked, returns x. Thus the value of ``kxy is x for any x and y.
    */
   Object* r;
-  r = World_newObject(world, sizeof(Object));
+  r = NewObject(Object);
   r->fProc = &_constant_function;
   r->fName = "constant_function";
   return r;
 }
 
 
-Object* _s2(World* world, Object* self, Object* other){
+Object* _s2(Object* self, Object* other){
   /* self == s2, other == z */
   Object* x; Object* y; Object*z;
   Object* xz; Object* yz;
@@ -127,18 +167,18 @@ Object* _s2(World* world, Object* self, Object* other){
   z = other;
   y = self->fOne.uObject;
   x = self->fTwo.uObject->fOne.uObject;
-  xz = World_call(world, x, z);
-  yz = World_call(world, y, z);
-  r = World_call(world, xz, yz);
+  xz = Unlambda_call(x, z);
+  yz = Unlambda_call(y, z);
+  r = Unlambda_call(xz, yz);
 
   return r;
 }
 
 
-Object* _s1(World* world, Object* self, Object* other){
+Object* _s1(Object* self, Object* other){
   /* self == s1, other == y */
   Object* s2;
-  s2 = World_newObject(world, sizeof(Object));
+  s2 = NewObject(Object);
   s2->fProc = &_s2;
   s2->fOne.uObject = other;
   s2->fTwo.uObject = self; /* may be it is better idea to reference x, instead of s1 */
@@ -147,22 +187,22 @@ Object* _s1(World* world, Object* self, Object* other){
 }
 
 
-Object* _generalized_evaluation(World* world, Object* self, Object* other){
+Object* _generalized_evaluation(Object* self, Object* other){
   /* self == s, other == x */
   Object* s1;
-  s1 = World_newObject(world, sizeof(Object));
+  s1 = NewObject(Object);
   s1->fProc = &_s1;
   s1->fOne.uObject = other;
   s1->fName = "s1";
   return s1;
 }
 
-Object* generalized_evaluation(World* world){
+Object* generalized_evaluation(void){
   /*
    * s is a generalized evaluation operator. ```sxyz evaluates to ``xz`yz for any x, y, and z."""
    */
   Object* r;/* s */
-  r = World_newObject(world, sizeof(Object));
+  r = NewObject(Object);
   r->fProc = &_generalized_evaluation;
   r->fOne.uObject = NULL;
   r->fName = "generalized_evaluation";
@@ -170,72 +210,90 @@ Object* generalized_evaluation(World* world){
 }
 
 
-void run_once(World* world){
+void UnlambdaEval_runOnce(UnlambdaEval* self){
   Object *operand, *operator, *q, *r;
+  Stack* stack;
 
-  operand = pop(world);
-  operator = pop(world);
-  q = pop(world);
-  r = World_call(world, operator, operand);
-  push(world, r);
+  stack = UnlambdaEval_getStack(self);
+
+  operand = Stack_pop(stack);
+  operator = Stack_pop(stack);
+  q = Stack_pop(stack);
+  r = Unlambda_call(operator, operand);
+  Stack_push(stack, r);
+}
+
+
+Object* Unlambda_call(Object* self, Object* other){
+  if(World_getDebug(getWorld())){
+      Object_print(self, "operator");
+      Object_print(other, "operand");
+  }
+  return self->fProc(self, other);
 }
 
 
 
-void  World_eval(World* world, char* xs){
+
+void UnlambdaEval_eval(UnlambdaEval* self, char* xs){
   char x;
+  Stack* stack;
+  Memory * memory;
+
+  stack = UnlambdaEval_getStack(self);
+  memory = UnlambdaEval_getMemory(self);
 
   while (*xs){
     x = *xs;
 
     switch(x){
       case '`':
-        push(world, quote(world));
+        Stack_push(stack, quote());
         break;
 
       case '.':
         xs++;
-        push(world, (print(world, *xs)));
+        Stack_push(stack, (print(*xs)));
         break;
 
       case 'r':
-        push(world, (print(world, '\n')));
+        Stack_push(stack, (print('\n')));
         break;
 
       case 'i':
-        push(world, identity(world));
+        Stack_push(stack, identity());
         break;
 
       case 'k':
-        push(world, constant_function(world));
+        Stack_push(stack, constant_function());
         break;
 
       case 's':
-        push(world, generalized_evaluation(world));
+        Stack_push(stack, generalized_evaluation());
         break;
 
       default:
         break;
     }
-    while (runnable(world)){
-      if(World_getDebug(world))
-        print_stack(world);
-      run_once(world);
-      mark(world);
-      sweep(world);
-      if(World_getDebug(world))
-        mem_stat(world);
+    while (runnable()){
+      if(World_getDebug(getWorld()))
+        Stack_print(stack);
+      UnlambdaEval_runOnce(self);
+      Memory_mark(memory, stack);
+      Memory_sweep(memory);
+      if(World_getDebug(getWorld()))
+        Memory_stat(memory);
     }
     xs++;
   }
-  while (runnable(world)){
-    if(World_getDebug(world))
-      print_stack(world);
-    run_once(world);
-    mark(world);
-    sweep(world);
-    if(World_getDebug(world))
-      mem_stat(world);
+  while (runnable()){
+    if(World_getDebug(getWorld()))
+      Stack_print(stack);
+    UnlambdaEval_runOnce(self);
+    Memory_mark(memory, stack);
+    Memory_sweep(memory);
+    if(World_getDebug(getWorld()))
+      Memory_stat(memory);
   }
 
   return;
@@ -252,6 +310,7 @@ gint main(gint argc, gchar* argv[]){
    * http://www.madore.org/~david/programs/unlambda/
    */
   World* world;
+  UnlambdaEval* ue;
   GOptionContext *context;
   GError *error = NULL;
 
@@ -263,13 +322,16 @@ gint main(gint argc, gchar* argv[]){
     return 1;
   }
 
-
   world = CreateWorld(MAXOBJECTS);
+  setWorld(world);
+  ue = NewUnlambdaEval(world);
 
   printf("%s\n", fib);
   //eval(hw);
-  World_unlambda(world, fib);
+  UnlambdaEval_eval(ue, fib);
   DeleteWorld(world);
 
   return 0;
 }
+
+

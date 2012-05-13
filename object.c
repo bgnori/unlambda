@@ -6,7 +6,13 @@
 #include "object.h"
 
 
-Object* _NewObject(int size){
+World* gWorld = NULL;
+
+#define XNewObject(TYPE) ((TYPE*)_XNewObject((sizeof(TYPE))))
+void make_new_entry(Object* obj);
+void  remove_entry(Object* entry);
+
+Object* _XNewObject(int size){
   Object* r;
   r = (Object*)malloc(sizeof(Object));
   r->fOne.uObject = NULL;
@@ -14,7 +20,7 @@ Object* _NewObject(int size){
   return r;
 }
 
-Object* World_newInterger(int v){
+Object* NewInterger(int v){
   Object* obj;
 
   obj = NewObject(Object);
@@ -24,7 +30,7 @@ Object* World_newInterger(int v){
 }
 
 
-void _DeleteObject(Object* self){
+void XDeleteObject(Object* self){
   free((void*)self);
 }
 
@@ -32,30 +38,30 @@ void Object_print(Object* obj, char* msg){
   printf("%s %s %p\n", msg, obj->fName, obj);
 }
 
-
-Object* World_call(World* world, Object* self, Object* other){
-  if(World_getDebug(world)){
-      Object_print(self, "operator");
-      Object_print(other, "operand");
-  }
-  return self->fProc(world, self, other);
-}
-
-
-
 World* CreateWorld(int memsize){
   World* w;
   Memory* m;
-  w = NewObject(World);
+
+  w = XNewObject(World);
+
   World_setDebug(w, true);
 
   m = CreateMemory(w, memsize);
 
-  Memory_setNth(m, 0, (Object*)w, -1);
+  Memory_NthEntry(m, 0)->fTarget = (Object*)w;
+  Memory_NthEntry(m, 0)->fGeneration = -1;
   World_setMemory(w, m);
+
   return w;
 }
 
+void setWorld(World* w){
+  gWorld = w;
+}
+
+World* getWorld(void){
+  return gWorld;
+}
 
 Memory* CreateMemory(World* world, int memsize){
   Memory* m;
@@ -64,7 +70,7 @@ Memory* CreateMemory(World* world, int memsize){
   MemoryEntry** end;
   Object* generation;
 
-  m = NewObject(Memory);
+  m = XNewObject(Memory);
 
   chunk = malloc(sizeof(Object*)*memsize);
   Memory_setEntries(m, chunk);
@@ -72,6 +78,7 @@ Memory* CreateMemory(World* world, int memsize){
 
   start = Memory_getEntries(m);
   end = start + Memory_getSize(m);
+
   if(World_getDebug(world)){
     printf("start/end: %p %p\n", start, end);
   }
@@ -79,18 +86,15 @@ Memory* CreateMemory(World* world, int memsize){
     start = NULL;
   }
 
-  generation = World_newInterger(0);
+  generation = NewInterger(0);
 
-  Memory_setNth(m, 1, (Object*)m, -1);
-  Memory_setNth(m, 2, generation, -1);
+  Memory_setNthEntry(m, 1, (Object*)m, -1);
+  Memory_setNthEntry(m, 2, generation, -1);
   return m;
 }
 
-MemoryEntry Memory_getNth(Memory* memory, int n){
-  return *(*(Memory_getEntries(memory)) + n);
-}
 
-void Memory_setNth(Memory* memory, int n, Object* target, int generation){
+void Memory_setNthEntry(Memory* memory, int n, Object* target, int generation){
   MemoryEntry entry;
 
   entry.fTarget = target;
@@ -98,166 +102,202 @@ void Memory_setNth(Memory* memory, int n, Object* target, int generation){
   *(*(Memory_getEntries(memory)) + n)  = entry;
 }
 
-
-void DeleteUnlambdaEval(UnlambdaEval* unlambda){
-  gstack = NULL;
-  mark(world);
-  sweep(world);
+Object* Memory_getNthObject(Memory* memory, int n){
+  return Memory_NthEntry(memory, n)->fTarget;
 }
 
-void DeleteMemory(Memory* memory){
+void Memory_setNthObject(Memory* memory, int n, Object* obj){
+  (*(Memory_getEntries(memory)) + n)->fTarget = obj;
+  (*(Memory_getEntries(memory)) + n)->fGeneration = 0; /*FIXME*/
+}
 
-  free((void*)(m->fObjects));
-  DeleteObject(m);
+
+int Memory_getGeneration(Memory* m){
+  Object* i;
+  i = Memory_NthEntry(m, 2)->fTarget;
+  return i->fOne.uInteger;
+}
+
+void Memory_incGeneration(Memory* self);
+void Memory_incGeneration(Memory* self){
+  Object* i;
+  i = Memory_NthEntry(self, 2)->fTarget;
+  i->fOne.uInteger+=1;
+}
+
+
+void DeleteMemory(Memory* self){
+  if(World_getDebug(getWorld())){
+    Memory_stat(self);
+  }
+  free((void*)Memory_getEntries(self));
+  XDeleteObject((Object*)self);
 }
 
 
 void DeleteWorld(World* world){
-  DeleteMemory(World_Memory(world));
-  DeleteObject(world);
+  DeleteMemory(World_getMemory(world));
+  XDeleteObject((Object*)world);
 }
 
 
-Object* World_newObject(World* world, int size){
+Object* _NewObject(int size){
   Object* r;
-  r = _NewObject(size);
-  make_new_entry(world, r);
+  r = _XNewObject(size);
+  make_new_entry(r);
   return r;
 }
 
-void World_deleteObject(World* world, Object* obj){
-  remove_entry(world, obj);
-  DeleteObject(obj);
+void _DeleteObject(Object* obj){
+  remove_entry(obj);
+  XDeleteObject(obj);
 }
 
-
-
-UnlambdaEval* World_newUnlambdaEval(World* world){
-  init_stack(world);
-}
-
-void World_deleteUnlambdaEval(World* world){
-
-
-}
-
-
-void mem_stat(World *world){
+void Memory_stat(Memory* self){
   int i;
   int used;
   used = 0;
-  for(i=0;i< World_Memory(world)->fSize; i++){
-    if( *(World_Memory(world)->fObjects+i)!=NULL){
+  for(i=0;i< Memory_getSize(self); i++){
+    if(Memory_NthEntry(self, i)->fTarget != NULL){
       used += 1;
     }
   }
-  printf("%d Object allocated, out of %d\n", used, World_Memory(world)->fSize);
+  printf("%d Object allocated, out of %d\n", used, Memory_getSize(self));
 }
 
 
-void make_new_entry(World *world, Object* obj){
+void make_new_entry(Object* obj){
+  Memory* m;
+  MemoryEntry* e;
+  m = getMemory();
+
   int i;
-  for(i=0;i<World_Memory(world)->fSize; i++){
-    if( *(World_Memory(world)->fObjects+i)==NULL){
-      *(World_Memory(world)->fObjects+i) = obj;
+  for(i=0;i<Memory_getSize(m); i++){
+    e = Memory_NthEntry(m, i);
+
+    if(e->fTarget ==NULL){
+      e->fTarget = obj;
       return;
     }
   }
   assert(false);
 }
 
-void  remove_entry(World* world, Object* entry){
+void remove_entry(Object* obj){
+  Memory* memory;
+  MemoryEntry* entry;
   int i;
-  for(i=0;i<World_Memory(world)->fSize; i++){
-    if( *(World_Memory(world)->fObjects+i)== entry){
-      *(World_Memory(world)->fObjects+i) = NULL;
+  memory = World_getMemory(getWorld());
+
+  for(i=0;i<Memory_getSize(memory); i++){
+    entry = Memory_NthEntry(memory, i);
+    if(entry->fTarget== obj){
+      entry->fTarget = NULL;
       return;
     }
   }
 }
 
-
-
-Object* gstack;
-
-void init_stack(World* world){
-  gstack = NULL;
+Stack * NewStack(void){
+  Stack* r;
+  r = NewObject(Stack);
+  Stack_setTopNode(r, NULL);
+  return r;
 }
 
-void push(World* world, Object* obj){
-  if (World_getDebug(world)){
+void Stack_push(Stack* stack, Object* obj){
+  StackNode* x;
+  StackNode* y;
+
+  if (World_getDebug(getWorld())){
     Object_print(obj, "pushing");
   }
-  obj->fPrev = gstack;
-  gstack = obj;
+  x = Stack_getTopNode(stack);
+  y = NewObject(StackNode);
+
+  StackNode_setNext(y, x);
+  StackNode_setData(y, obj);
+  Stack_setTopNode(stack, y);
 }
 
-Object* pop(World* world){
+Object* Stack_pop(Stack* stack){
   Object* r;
-  r = gstack
-  if (World_getDebug(world)){
+  StackNode* n;
+
+  if (World_getDebug(getWorld())){
     Object_print(r, "popping");
   }
-  gstack = gstack->fPrev;
+
+  n = Stack_getTopNode(stack);
+  r = StackNode_getData(n); 
+  Stack_setTopNode(stack, StackNode_getNext(n));
+
+  DeleteObject(n); 
   return r;
 }
 
 
-void print_stack(World* world){
+void Stack_print(Stack* stack){
   char buf[10];
   int depth = 0;
-  Object* peeker;
-  peeker = gstack;
+  StackNode* peeker;
+  peeker = Stack_getTopNode(stack);
+
   printf("===== stack dump start ====\n");
   while(peeker){
     sprintf(buf, "(depth=%i)", depth);
-    Object_print(peeker, buf);
+    Object_print(StackNode_getData(peeker), buf);
     depth += 1;
-    peeker = peeker->fPrev;
+    peeker = StackNode_getNext(peeker);
   }
   printf("===== stack dump end ====\n");
 }
 
-void mark_tree(World* world, Object* obj){
+void mark_tree(Object* obj){
 
   if(obj->fOne.uObject){
-    mark_tree(world, obj->fOne.uObject);
+    mark_tree(obj->fOne.uObject);
   }
   if(obj->fTwo.uObject){
-    mark_tree(world, obj->fTwo.uObject);
+    mark_tree(obj->fTwo.uObject);
   }
 
-  obj->fGeneration = World_Memory(world)->fGeneration;
-  if(World_getDebug(world)){
+  /* FIXME
+  //obj->fGeneration = World_getMemory(world)->fGeneration;
+  //FIXME
+  //Memory
+
+  if(World_getDebug(getWorld())){
     printf("marking %p %d\n", obj, obj->fGeneration);
   }
+  */
 }
 
-void mark(World* world){
-  Object* obj;
+void Memory_mark(Memory* self, Stack* stack);
+  StackNode* peeker;
 
-  World_Memory(world)->fGeneration += 1;
-  obj = gstack;
-  while(obj){
-    mark_tree(world, obj);
-    obj = obj->fPrev;
+  Memory_incGeneration(self);
+  peeker = Stack_getTopNode(stack);
+  while(peeker){
+    mark_tree(StackNode_getData(peeker));
+    peeker = StackNode_getNext(peeker);
   }
 }
 
-void sweep(World* world){
+void Memory_sweep(Memory* self){
   int i;
   Object* obj;
 
-  if(World_getDebug(world)){
-    printf("generation %d\n", World_Memory(world)->fGeneration);
+  if(World_getDebug(getWorld())){
+    printf("generation %d\n", Memory_getGeneration(self));
   }
-  for(i=0; i<World_Memory(world)->fSize; i++){
-    obj = *(World_Memory(world)->fObjects+i);
+  for(i=0; i<Memory_getSize(self); i++){
+    obj = Memory_getNthObject(self, i);
     if(obj){
-      if(World_getDebug(world)){
-        printf("checking %p(%p) %d\n", obj, World_Memory(world)->fObjects+i ,obj->fGeneration);
+      if(World_getDebug(getWorld())){
+        printf("checking %p %d\n", obj, obj->fGeneration);
       }
-      if(World_Memory(world)->fGeneration != obj->fGeneration){
+      if(!= obj->fGeneration){
         if(World_getDebug(world)){
           printf("deleting %p\n", obj);
         }
