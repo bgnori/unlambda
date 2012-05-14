@@ -5,18 +5,21 @@ LDFALGS = -lglib-2.0
 
 DEBUG = -g
 
+COMPILER = /usr/bin/clang
+'COMPILER = gcc'
+
 
 primitive.o: primitive.c primitive.h peer.h
-	gcc $(CFALGS) -Wall $(DEBUG) -c primitive.c
+	$(COMPILER) $(CFALGS) -Wall $(DEBUG) -c primitive.c
 
 peer.o: peer.c peer.h
-	gcc $(CFALGS) -Wall $(DEBUG) -c peer.c
+	$(COMPILER) $(CFALGS) -Wall $(DEBUG) -c peer.c
 
 test: unlambda
 	valgrind -v --error-limit=no --leak-check=yes --show-reachable=no ./unlambda 2>&1 | tee valgrind.log
 
 clean:
-	rm unlambda valgrind.log
+	rm unlambda valgrind.log *.o
 
 unlambda: unlambda.o object.o
 	gcc $(CFALGS) $(LDFALGS) $(DEBUG) -Wall  -o unlambda unlambda.o object.o
