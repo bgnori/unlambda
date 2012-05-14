@@ -3,15 +3,18 @@
 
 #define false 0
 #define true 1
+#define NULL ((void*)0)
 
 
 typedef struct TPrimitive Primitive;
-typedef Primitive*(*BinaryFunc)(Primitive* x, Primitive* y);
+typedef Primitive*(*Func)(Primitive* data, Primitive* x);
+typedef struct TBinaryNode BinaryNode;
 typedef struct TStack Stack;
-typedef struct TStackNode StackNode;
 typedef struct TList List;
-typedef struct TListNode ListNode;
-
+typedef struct TString String;
+typedef struct TChar Char;
+typedef struct TChunk Chunk;
+typedef struct TFunctionoid Functionoid;
 typedef struct TPrimitiveField PrimitiveField;
 
 
@@ -24,14 +27,14 @@ typedef struct TPrimitiveField PrimitiveField;
 struct TPrimitiveField {
   Primitive* uPrimitive;
   Stack* uStack;
-  StackNode* uStackNode;
+  BinaryNode* uBinaryNode;
   int uInteger;
   char uChar;
   char* uStringPtr;
   int uStringLen;
   void* uChunkPtr;
   int uChunkLen;
-  BinaryFunc uProc;
+  Func uProc;
 };
 
 typedef enum TPrimitiveMetaEnum PrimitiveMetaEnum;
@@ -75,11 +78,29 @@ void onDeletePrimitive(Primitive* p);
 Primitive* _NewPrimitive(int size);
 #define DeletePrimitive(self) _DeletePrimitive((Primitive*)(self))
 void _DeletePrimitive(Primitive* self);
+void Primitive_print(Primitive* self);
 
 
 /*
  *
- * Stack and Stack Node
+ * BinaryNode for implementing Stack and list.
+ *
+ */
+struct TBinaryNode {
+  Primitive fBase;
+};
+#define NewBinaryNode() NewPrimitive(BinaryNode)
+#define DeleteBinaryNode(self) DeletePrimitive((Primitive*)(self))
+
+#define BinaryNode_getNext(self) ((self)->fBase.fOne.uBinaryNode)
+#define BinaryNode_setNext(self, next) ((self)->fBase.fOne.uBinaryNode = (next))
+#define BinaryNode_getData(self) ((self)->fBase.fTwo.uPrimitive)
+#define BinaryNode_setData(self, data) ((self)->fBase.fTwo.uPrimitive = (Primitive*)(data))
+
+
+/*
+ *
+ * Stack 
  *
  */
 
@@ -89,28 +110,16 @@ struct TStack{
 
 Stack* NewStack(void);
 void DeleteStack(Stack* self);
-#define Stack_getTopNode(self) ((self)->fBase.fOne.uStackNode)
-#define Stack_setTopNode(self, node) ((self)->fBase.fOne.uStackNode = (node))
+#define Stack_getTopNode(self) ((self)->fBase.fOne.uBinaryNode)
+#define Stack_setTopNode(self, node) ((self)->fBase.fOne.uBinaryNode = (node))
 void Stack_push(Stack* self, Primitive* item);
 Primitive* Stack_pop(Stack* self);
 void Stack_print(Stack* self);
 
-struct TStackNode {
-  Primitive fBase;
-};
-
-#define NewStackNode() NewPrimitive(StackNode)
-#define DeleteStackNode(self) DeletePrimitive((Primitive*)(self))
-
-#define StackNode_getNext(self) ((self)->fBase.fOne.uStackNode)
-#define StackNode_setNext(self, next) ((self)->fBase.fOne.uStackNode = (next))
-#define StackNode_getData(self) ((self)->fBase.fTwo.uPrimitive)
-#define StackNode_setData(self, data) ((self)->fBase.fTwo.uPrimitive = (Primitive*)(data))
-
 
 /*
  *
- * List and List Node
+ * List 
  *
  */
 struct TList{
@@ -119,29 +128,69 @@ struct TList{
 
 List* NewList(void);
 void DeleteList(List* self);
-#define List_getTopNode(self) ((self)->fBase.fOne.uListNode)
-#define List_setTopNode(self, node) ((self)->fBase.fOne.uListNode = (node))
-#define List_getTopNode(self) ((self)->fBase.fOne.uListNode)
-#define List_setTopNode(self, node) ((self)->fBase.fOne.uListNode = (node))
-void List_push(List* stack, Primitive* item);
+#define List_getHeadNode(self) ((self)->fBase.fOne.uBinaryNode)
+#define List_setHeadNode(self, node) ((self)->fBase.fOne.uBinaryNode = (node))
+#define List_getTailNode(self) ((self)->fBase.fTwo.uBinaryNode)
+#define List_setTailNode(self, node) ((self)->fBase.fTwo.uBinaryNode = (node))
+void List_append(List* stack, Primitive* item);
 Primitive* List_pop(List* stack);
 void List_print(List* stack);
 
-struct TListNode {
+
+/*
+ *
+ * Functionoid
+ *
+ * not closure, * not fuction, not functor, so Functionoid was only choice.
+ *
+ */
+struct TFunctionoid{
   Primitive fBase;
 };
-
-#define NewListNode() NewPrimitive(ListNode)
-#define DeleteListNode(self) DeletePrimitive((Primitive*)(self))
-
-#define ListNode_getNext(self) ((self)->fBase.fOne.uListNode)
-#define ListNode_setNext(self, next) ((self)->fBase.fOne.uListNode = (next))
-#define ListNode_getData(self) ((self)->fBase.fTwo.uPrimitive)
-#define ListNode_setData(self, data) ((self)->fBase.fTwo.uPrimitive = (Primitive*)(data))
+Functionoid* NewFunctionoid(Func* f, Primitive* data);
+Primitive* Functionoid_call(Functionoid* self, Primitive *x);
 
 
+/*
+ *
+ * Char
+ *
+ */
+struct TChar{
+  Primitive fBase;
+};
+Char* NewChar(char c);
+void DeleteChar(Char* self);
+char Char_getChar(Char* self);
 
 
+/*
+ *
+ * String
+ *
+ */
+struct TString {
+  Primitive fBase;
+};
+String* NewString(char*s, int len);
+void DeleteString(String* self);
+char* String_getCString(String* self); 
+/* some string may contain '\0'. what should i do? */
+/* This is NOT okay to write to this string. */
+
+
+/*
+ *
+ * Chunk
+ *
+ */
+struct TChunk {
+  Primitive fBase;
+};
+Chunk* NewChunk(int count);
+void DeleteChunk(Chunk* self);
+Primitive* Chunk_getNth(Chunk* self, int n);
+void Chunk_setNth(Chunk* self, int n, Primitive* p);
 
 
 
